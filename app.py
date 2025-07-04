@@ -80,7 +80,21 @@ def delete_transaction(index):
 def delete_all_transactions():
     save_transactions([]) # Simpan list kosong
     return jsonify({'message': 'Semua riwayat transaksi berhasil dihapus'}), 200
+    # Rute untuk menyajikan halaman Pentol.html
+@app.route('/Pentol.html')
+def serve_pentol_html():
+    return send_from_directory('.', 'Pentol.html')
 
+# Rute untuk menyajikan halaman riwayat.html
+@app.route('/riwayat.html')
+def serve_riwayat_html():
+    return send_from_directory('.', 'riwayat.html')
+
+# Opsional: Jika Anda ingin Pentol.html menjadi halaman utama (saat mengakses hanya URL utama)
+@app.route('/')
+def serve_index():
+    return send_from_directory('.', 'Pentol.html')
+    
 if __name__ == '__main__':
     # Saat deploy ke Replit atau Railway, port biasanya diset oleh environment variable
     # Pastikan app.py Anda mendengarkan di host '0.0.0.0' agar dapat diakses dari luar
