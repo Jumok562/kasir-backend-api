@@ -1,67 +1,90 @@
+import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import json
-import os
 
 app = Flask(__name__)
-CORS(app) # Mengizinkan CORS untuk semua rute
+CORS(app) # Ini penting untuk mengizinkan permintaan dari domain yang berbeda (misalnya, dari file HTML lokal atau hosting frontend lain)
 
-DATA_FILE = 'transactions.json'
+TRANSACTIONS_FILE = 'transactions.json'
 
+# Fungsi untuk memuat transaksi dari file JSON
 def load_transactions():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'r') as f:
+    try:
+        with open(TRANSACTIONS_FILE, 'r') as f:
             return json.load(f)
-    return []
+    except FileNotFoundError:
+        return [] # Mengembalikan list kosong jika file belum ada
 
+# Fungsi untuk menyimpan transaksi ke file JSON
 def save_transactions(transactions):
-    with open(DATA_FILE, 'w') as f:
+    with open(TRANSACTIONS_FILE, 'w') as f:
         json.dump(transactions, f, indent=4)
 
-@app.route('/save_transaction', methods=['POST'])
-def save_transaction():
+@app.route('/')
+def hello_world():
+    return 'Hello from Flask!'
+
+@app.route('/process_transaction', methods=['POST'])
+def process_transaction():
+    data = request.json
+    product_name = data.get('product_name')
+    quantity = data.get('quantity')
+    price_per_unit = data.get('price_per_unit')
+    money_received = data.get('money_received')
+
+    if not all([product_name, quantity, price_per_unit, money_received is not None]):
+        return jsonify({'error': 'Data tidak lengkap'}), 400
+
     try:
-        transaction = request.json
-        transactions = load_transactions()
+        quantity = int(quantity)
+        price_per_unit = float(price_per_unit)
+        money_received = float(money_received)
+    except ValueError:
+        return jsonify({'error': 'Kuantitas, harga, dan uang diterima harus angka yang valid'}), 400
 
-        # Periksa apakah transactionId sudah ada untuk menghindari duplikasi
-        existing_ids = {t['transactionId'] for t in transactions}
-        if transaction['transactionId'] in existing_ids:
-            # Jika ID sudah ada, increment sampai menemukan ID yang unik
-            new_id = transaction['transactionId']
-            while new_id in existing_ids:
-                new_id += 1
-            transaction['transactionId'] = new_id
-            print(f"Duplicate transaction ID found, assigned new ID: {new_id}")
+    total_price = quantity * price_per_unit
+    change = money_received - total_price
 
+    # Buat objek transaksi
+    transaction = {
+        'product_name': product_name,
+        'quantity': quantity,
+        'price_per_unit': price_per_unit,
+        'total_price': total_price,
+        'money_received': money_received,
+        'change': change,
+        'timestamp': request.json.get('timestamp') # Ambil timestamp dari frontend
+    }
 
-        transactions.append(transaction)
-        save_transactions(transactions)
-        return jsonify({"message": "Transaction saved successfully", "transactionId": transaction['transactionId']}), 201
-    except Exception as e:
-        print(f"Error saving transaction: {e}")
-        return jsonify({"message": "Failed to save transaction", "error": str(e)}), 500
+    transactions = load_transactions()
+    transactions.append(transaction)
+    save_transactions(transactions)
+
+    return jsonify({'message': 'Transaksi berhasil!', 'change': change}), 200
 
 @app.route('/get_transactions', methods=['GET'])
 def get_transactions():
     transactions = load_transactions()
     return jsonify(transactions), 200
 
-@app.route('/delete_transaction/<int:transaction_id>', methods=['DELETE'])
-def delete_single_transaction(transaction_id):
+@app.route('/delete_transaction/<int:index>', methods=['DELETE'])
+def delete_transaction(index):
     transactions = load_transactions()
-    initial_len = len(transactions)
-    transactions = [t for t in transactions if t['transactionId'] != transaction_id]
-    if len(transactions) < initial_len:
+    if 0 <= index < len(transactions):
+        deleted_transaction = transactions.pop(index)
         save_transactions(transactions)
-        return jsonify({"message": f"Transaction {transaction_id} deleted successfully"}), 200
-    return jsonify({"message": f"Transaction {transaction_id} not found"}), 404
+        return jsonify({'message': f'Transaksi {index} berhasil dihapus', 'deleted': deleted_transaction}), 200
+    return jsonify({'error': 'Indeks transaksi tidak valid'}), 404
 
-@app.route('/clear_transactions', methods=['DELETE'])
-def clear_transactions():
+@app.route('/delete_all_transactions', methods=['DELETE'])
+def delete_all_transactions():
     save_transactions([]) # Simpan list kosong
-    return jsonify({"message": "All transactions cleared successfully"}), 200
+    return jsonify({'message': 'Semua riwayat transaksi berhasil dihapus'}), 200
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-
+    # Saat deploy ke Replit atau Railway, port biasanya diset oleh environment variable
+    # Pastikan app.py Anda mendengarkan di host '0.0.0.0' agar dapat diakses dari luar
+    app.run(host='0.0.0.0', port=5000)
+    # Anda juga bisa menggunakan:
+    # from os import environ
+    # app.run(host='0.0.0.0', port=environ.get('PORT', 5000))
